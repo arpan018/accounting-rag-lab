@@ -1,0 +1,22 @@
+# Project environment and secrets
+.venv/
+venv/
+.tmp/
+.env
+.env.*
+!.env.example
+
+# Local planning notes
+.work/
+
+# Source documents, indexes, and derived data
+data/raw/
+data/chroma/
+data/embeddings/
+data/processed/
+
+# Python and notebook artifacts
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/

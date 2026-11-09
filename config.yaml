@@ -1,0 +1,9 @@
+# Non-secret project settings. Choose local model names during the retrieval phase.
+ollama:
+  base_url: http://127.0.0.1:11434
+  embedding_model: ""
+  generation_model: ""
+
+chroma:
+  persist_directory: data/chroma
+  collection_name: invoice-evidence

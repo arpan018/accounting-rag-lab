@@ -1,0 +1,5 @@
+# Approved project dependencies; install only inside .venv.
+PyMuPDF
+chromadb
+jupyterlab
+pytest
