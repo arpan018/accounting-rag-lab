@@ -15,6 +15,8 @@ class TextChunk:
     page_number: int
     chunk_index: int
     text: str
+    document_type: str = "invoice_pdf"
+    record_id: str | None = None
 
 
 # Bound chunk size while keeping source and page metadata for citations.
