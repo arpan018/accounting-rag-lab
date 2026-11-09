@@ -10,7 +10,7 @@ This project prototypes the document-intelligence and reconciliation core that c
 
 ## Current status
 
-Bootstrap and initial corpus review are complete. T08 adds selectable-PDF extraction and provenance-preserving chunking; T10 adds a local Chroma index built from explicit Ollama vectors for the active scope through invoice case `031_k09`. The current implementation is local and performs no OCR. RAG question answering remains the next retrieval phase. The project environment uses Python 3.14.3 with the approved dependencies PyMuPDF, ChromaDB, JupyterLab, and pytest. The local embedding model selected for T10 is `embeddinggemma-2:270m`; `phi4-mini:latest` remains the local CLI smoke-test model. Core generation-model selection is still open. The synthetic learning corpus is under `data/raw/invoice-agent/` and is excluded from Git.
+Bootstrap and initial corpus review are complete. T08 adds selectable-PDF extraction and provenance-preserving chunking; T10 adds a local Chroma index built from explicit Ollama vectors for the active scope through invoice case `031_k09`. T11 uses `phi4-mini:latest` for local grounded answers with a 4096-token context. The current implementation is local and performs no OCR. The project environment uses Python 3.14.3 with the approved dependencies PyMuPDF, ChromaDB, JupyterLab, and pytest. The local embedding model is `embeddinggemma-2:270m`. The synthetic learning corpus is under `data/raw/invoice-agent/` and is excluded from Git.
 
 ## Learning dataset
 
