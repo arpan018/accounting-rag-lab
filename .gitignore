@@ -6,6 +6,9 @@ venv/
 .env.*
 !.env.example
 
+# Local-only Ollama CLI experiment; decide later whether to publish it.
+/experiments/ollama-cli-agent/
+
 # Local planning notes
 .work/
 
