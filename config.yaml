@@ -1,7 +1,8 @@
 # Non-secret project settings. Choose local model names during the retrieval phase.
 ollama:
   base_url: http://127.0.0.1:11434
-  embedding_model: ""
+  embedding_model: embeddinggemma-2:270m
+  embedding_dimensions_observed: 768
   generation_model: ""
 
 chroma:
