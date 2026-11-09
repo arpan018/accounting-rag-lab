@@ -10,8 +10,20 @@ from src.reconciliation import (
 
 def test_decimal_parser_preserves_precision_and_equivalent_spellings():
     assert parse_decimal("12.10") == parse_decimal("12.1") == Decimal("12.1")
+    assert parse_decimal("12,5", decimal_separator=",") == Decimal("12.50")
+    assert parse_decimal("12,5", decimal_separator=",") != Decimal("125")
     assert parse_decimal("403.50") != parse_decimal("40.35")
     assert parse_decimal("-12.10") == Decimal("-12.10")
+
+
+def test_european_invoice_price_matches_dot_decimal_po_price():
+    findings = compare_invoice_line(
+        {"quantity": "1", "unit_price": "12,5"},
+        {"quantity": "1", "unit_price": "12.50"},
+        decimal_separator=",",
+        po_decimal_separator=".",
+    )
+    assert "PRICE_VARIANCE" not in {finding.code for finding in findings}
 
 
 def test_decimal_parser_requires_explicit_locale_and_supports_grouping():
