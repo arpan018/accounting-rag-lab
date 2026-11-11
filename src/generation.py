@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Sequence
@@ -41,7 +42,9 @@ def answer_with_evidence(
     evidence: Sequence[RetrievedEvidence],
     *,
     model: str,
+    provider: str = "ollama",
     base_url: str = "http://127.0.0.1:11434",
+    api_key: str | None = None,
     num_ctx: int = 4096,
     timeout_seconds: int = 180,
 ) -> GroundedAnswer:
@@ -49,11 +52,10 @@ def answer_with_evidence(
         raise ValueError("question must not be empty")
     if not evidence:
         return GroundedAnswer(ABSTENTION, (), True)
-    endpoint = urlsplit(base_url)
-    if endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost"}:
-        raise ValueError("Only a local Ollama endpoint is allowed")
     if not model or num_ctx < 1:
         raise ValueError("model name and positive context length are required")
+    if provider not in {"ollama", "openai"}:
+        raise ValueError("provider must be 'ollama' or 'openai'")
 
     system = (
         "Answer only from the supplied invoice, purchase order, and goods-receipt evidence. "
@@ -64,29 +66,46 @@ def answer_with_evidence(
         "Cite each factual claim with the supplied evidence IDs like [E1]. "
         "Use only supplied IDs. Do not infer document links, invent values, or treat a PO match alone as a duplicate invoice."
     )
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": build_evidence_prompt(question, evidence)},
-        ],
-        "stream": False,
-        "options": {"num_ctx": num_ctx, "temperature": 0},
-    }
-    request = Request(
-        f"{base_url.rstrip('/')}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    if provider == "ollama":
+        endpoint = urlsplit(base_url)
+        if endpoint.scheme != "http" or endpoint.hostname not in {"127.0.0.1", "localhost"}:
+            raise ValueError("Only a local Ollama endpoint is allowed")
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": build_evidence_prompt(question, evidence)},
+            ],
+            "stream": False,
+            "options": {"num_ctx": num_ctx, "temperature": 0},
+        }
+        url = f"{base_url.rstrip('/')}/api/chat"
+        headers = {"Content-Type": "application/json"}
+    else:
+        token = api_key or os.environ.get("OPENAI_API_KEY", "")
+        if not token or token == "PASTE_OPENAI_API_KEY_HERE":
+            raise ValueError("Set OPENAI_API_KEY in .env or the current shell before selecting OpenAI")
+        payload = {
+            "model": model,
+            "instructions": system,
+            "input": build_evidence_prompt(question, evidence),
+            "max_output_tokens": 1200,
+        }
+        url = "https://api.openai.com/v1/responses"
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    request = Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             result = json.loads(response.read().decode("utf-8"))
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise GenerationError(f"Local Ollama answer request failed: {exc}") from exc
+        provider_name = "Local Ollama" if provider == "ollama" else "OpenAI API"
+        raise GenerationError(f"{provider_name} answer request failed: {exc}") from exc
 
-    message = result.get("message", {}) if isinstance(result, dict) else {}
-    raw_answer = message.get("content", "").strip() if isinstance(message, dict) else ""
+    if provider == "ollama":
+        message = result.get("message", {}) if isinstance(result, dict) else {}
+        raw_answer = message.get("content", "").strip() if isinstance(message, dict) else ""
+    else:
+        raw_answer = _responses_api_text(result)
     if not raw_answer or raw_answer.casefold() == ABSTENTION.casefold():
         return GroundedAnswer(ABSTENTION, (), True)
 
@@ -103,3 +122,25 @@ def answer_with_evidence(
             return GroundedAnswer(ABSTENTION, (), True)
     citations = tuple(evidence[value - 1].citation for value in unique_ids)
     return GroundedAnswer(raw_answer, citations, False)
+
+
+def _responses_api_text(result: object) -> str:
+    """Extract generated text from the OpenAI Responses API response shape."""
+    if not isinstance(result, dict):
+        return ""
+    output = result.get("output", [])
+    if not isinstance(output, list):
+        return ""
+    parts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "output_text":
+                value = block.get("text")
+                if isinstance(value, str):
+                    parts.append(value)
+    return "\n".join(parts).strip()

@@ -3,8 +3,13 @@ ollama:
   base_url: http://127.0.0.1:11434
   embedding_model: embeddinggemma-2:270m
   embedding_dimensions_observed: 768
-  generation_model: phi4-mini:latest
-  generation_context: 4096
+
+answer:
+  # Use one answer provider per run: ollama or openai.
+  provider: ollama
+  ollama_model: phi4-mini:latest
+  openai_model: gpt-5.4-mini
+  context: 4096
 
 chroma:
   persist_directory: data/chroma
