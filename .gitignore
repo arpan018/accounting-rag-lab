@@ -13,6 +13,7 @@ venv/
 .work/
 
 # Source documents, indexes, and derived data
+/eval/
 data/raw/
 data/chroma/
 data/embeddings/

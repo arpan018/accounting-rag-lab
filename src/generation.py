@@ -56,10 +56,13 @@ def answer_with_evidence(
         raise ValueError("model name and positive context length are required")
 
     system = (
-        "Answer only from the retrieved evidence in the user message. "
+        "Answer only from the supplied invoice, purchase order, and goods-receipt evidence. "
+        "For a question comparing invoiced and received quantities, state the invoice quantity and "
+        "receipt quantity, then compare them. Cite both the invoice evidence and receipt evidence. "
+        "If a needed document or value is missing, or a document link is uncertain, abstain. "
         f"If it does not support an answer, reply exactly: {ABSTENTION} "
-        "Cite every factual answer with one or more evidence IDs like [E1]. "
-        "Use only evidence IDs that were supplied. Do not invent details or citations."
+        "Cite each factual claim with the supplied evidence IDs like [E1]. "
+        "Use only supplied IDs. Do not infer document links, invent values, or treat a PO match alone as a duplicate invoice."
     )
     payload = {
         "model": model,
@@ -91,5 +94,12 @@ def answer_with_evidence(
     if not ids or any(value < 1 or value > len(evidence) for value in ids):
         return GroundedAnswer(ABSTENTION, (), True)
     unique_ids = tuple(dict.fromkeys(ids))
+    comparison_question = bool(re.search(r"\b(compare|all .* units|invoiced|received|discrepancy|mismatch)\b", question, re.IGNORECASE))
+    if comparison_question:
+        cited_types = {evidence[value - 1].document_type for value in unique_ids}
+        has_invoice = any("invoice" in value for value in cited_types)
+        has_receipt = any(value in {"goods_receipt", "receipt"} for value in cited_types)
+        if not has_invoice or not has_receipt:
+            return GroundedAnswer(ABSTENTION, (), True)
     citations = tuple(evidence[value - 1].citation for value in unique_ids)
     return GroundedAnswer(raw_answer, citations, False)
