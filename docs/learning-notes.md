@@ -24,6 +24,16 @@ Use these notes to explain what each project phase teaches. Keep examples small 
 - Ask a person to resolve missing, ambiguous, conflicting, material, or low-confidence cases.
 - Distinguish synthetic tests from evaluation on owner-verified real records. Do not claim corpus accuracy when the reference labels are unverified.
 
+## Pydantic schemas for accounting records
+
+Pydantic `BaseModel` classes describe the fields a record must have and validate incoming Python/JSON data. In this project, `PurchaseOrderRecord` and `GoodsReceiptRecord` mirror the source JSON keys; a `SourceLocator` is added by the loader because the JSON record itself does not identify its file location. `extra="forbid"` catches unexpected fields so a changed source format is visible instead of silently ignored.
+
+Money and quantity fields stay as strict source strings such as `"12.50"` or `"12,5"`. A schema validator checks that each string is parseable using the declared separators, while `decimal_value()` calls the existing `parse_decimal()` function to produce a Python `Decimal` when calculation is needed. This keeps the original spelling available for audit and rejects floats. A valid Pydantic object only proves that its shape and types passed validation; it does not prove that the invoice is correct or agrees with a PO or receipt. Deterministic reconciliation and human review still decide those questions.
+
+## Exact record links versus vector search
+
+The source PO and receipt JSON records both have a `po_number`. The record loader uses that exact identifier to fetch the PO and every receipt linked to it. For an invoice, a printed PO number is an exact candidate; if it is absent, a separate reviewed link can supply a candidate while the invoice's omission remains visible. A PO can have multiple invoices or receipts, so the loader returns all candidates/records instead of assuming a one-to-one relationship. Chroma similarity helps find relevant passages, but it does not establish that two accounting records belong together.
+
 ## Ground truth and the business use case
 
 An invoice is a supplier's claim: “we supplied these items/services and you owe this amount.” In a real purchasing organization, the independent records used to check that claim usually come from separate systems:
