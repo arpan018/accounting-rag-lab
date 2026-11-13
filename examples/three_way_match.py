@@ -28,13 +28,16 @@ def main() -> int:
         working_set_csv=PROJECT_ROOT / "eval/working_set.csv",
         review_queue_csv=PROJECT_ROOT / "eval/review_queue.csv",
     )
-    if args.invoice:
-        supplied = Path(args.invoice)
-        if not supplied.is_absolute() and not (loader.raw_root / supplied).exists():
-            supplied = PROJECT_ROOT / supplied
-        result = run_three_way_check(invoice_path=supplied, loader=loader)
-    else:
-        result = run_three_way_check(po_number=args.po, loader=loader)
+    try:
+        if args.invoice:
+            supplied = Path(args.invoice)
+            if not supplied.is_absolute() and not (loader.raw_root / supplied).exists():
+                supplied = PROJECT_ROOT / supplied
+            result = run_three_way_check(invoice_path=supplied, loader=loader)
+        else:
+            result = run_three_way_check(po_number=args.po, loader=loader)
+    except (ValueError, FileNotFoundError) as exc:
+        parser.error(str(exc))
     print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
     return 0
 

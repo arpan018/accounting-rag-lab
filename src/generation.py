@@ -29,11 +29,17 @@ class GroundedAnswer:
 
 
 # Number evidence passages so citations can be checked against retrieved items.
-def build_evidence_prompt(question: str, evidence: Sequence[RetrievedEvidence]) -> str:
+def build_evidence_prompt(
+    question: str,
+    evidence: Sequence[RetrievedEvidence],
+    *,
+    identifier_context: str | None = None,
+) -> str:
     blocks = []
     for index, item in enumerate(evidence, start=1):
         blocks.append(f"[E{index}] {item.citation.format()}\n{item.text}")
-    return f"Question:\n{question}\n\nRetrieved evidence:\n" + "\n\n".join(blocks)
+    context = f"Selected document: {identifier_context}\n\n" if identifier_context else ""
+    return f"{context}Question:\n{question}\n\nRetrieved evidence:\n" + "\n\n".join(blocks)
 
 
 # Call only loopback Ollama and replace uncited or ungrounded references with abstention.
@@ -45,6 +51,7 @@ def answer_with_evidence(
     provider: str = "ollama",
     base_url: str = "http://127.0.0.1:11434",
     api_key: str | None = None,
+    identifier_context: str | None = None,
     num_ctx: int = 4096,
     timeout_seconds: int = 180,
 ) -> GroundedAnswer:
@@ -74,7 +81,7 @@ def answer_with_evidence(
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": build_evidence_prompt(question, evidence)},
+                {"role": "user", "content": build_evidence_prompt(question, evidence, identifier_context=identifier_context)},
             ],
             "stream": False,
             "options": {"num_ctx": num_ctx, "temperature": 0},
@@ -88,7 +95,7 @@ def answer_with_evidence(
         payload = {
             "model": model,
             "instructions": system,
-            "input": build_evidence_prompt(question, evidence),
+            "input": build_evidence_prompt(question, evidence, identifier_context=identifier_context),
             "max_output_tokens": 1200,
         }
         url = "https://api.openai.com/v1/responses"

@@ -132,9 +132,27 @@ class SourceRecordLoader:
             (Path.cwd() / supplied).resolve(),
         ]
         matches = [candidate for candidate in candidates if candidate in self._allowed_paths]
-        if not matches:
-            raise ValueError("invoice_path is not present in eval/working_set.csv")
-        return matches[0]
+        if matches:
+            return matches[0]
+
+        # Also accept the exact case ID or invoice filename, with or without .pdf.
+        supplied_name = supplied.name.casefold()
+        supplied_stem = Path(supplied_name).stem if Path(supplied_name).suffix else supplied_name
+        aliases: list[Path] = []
+        for allowed_path, row in self._allowed_paths.items():
+            source_name = Path(row["invoice_source"]).name.casefold()
+            source_stem = Path(source_name).stem
+            names = {row["case_id"].casefold(), source_name, source_stem}
+            if supplied_name in names or supplied_stem in names:
+                aliases.append(allowed_path)
+        if len(aliases) == 1:
+            return aliases[0]
+        if len(aliases) > 1:
+            raise ValueError(f"Invoice name is ambiguous; provide a full path: {invoice_path}")
+        raise ValueError(
+            f"Invoice '{invoice_path}' was not found in the working set. "
+            "Use an exact case ID (for example 007_q07), filename, or allow-listed path."
+        )
 
     # Parse JSON records into strict models and reject duplicate PO identifiers.
     def _load_purchase_orders(self) -> dict[str, PurchaseOrderRecord]:

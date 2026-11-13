@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 import chromadb
 
@@ -41,6 +42,67 @@ def load_document_links(path: str | Path = "data/document_links.csv") -> dict[st
     return result
 
 
+def resolve_invoice_input(invoice_path: str, links: dict[str, DocumentLink]) -> DocumentLink:
+    """Resolve an allow-listed invoice by case ID, filename, or path."""
+    supplied = _normalize_invoice_path(invoice_path)
+    supplied_path = Path(supplied)
+    supplied_aliases = {supplied, supplied_path.name, supplied_path.stem}
+    matches = [
+        link
+        for link in links.values()
+        if supplied_aliases.intersection(_invoice_aliases(link))
+    ]
+    if not matches:
+        raise ValueError(f"Invoice path is not listed in data/document_links.csv: {invoice_path}")
+    if len(matches) > 1:
+        options = ", ".join(f"{link.case_id} ({link.invoice_source})" for link in matches)
+        raise ValueError(f"Invoice name is ambiguous; use a full path. Matches: {options}")
+    link = matches[0]
+    _require_reviewed_link(link)
+    return link
+
+
+def resolve_po_input(po_number: str, links: dict[str, DocumentLink]) -> tuple[DocumentLink, ...]:
+    """Resolve an exact PO and return its invoice candidates, if any."""
+    if not re.fullmatch(r"PO-\d{4}-\d{4}", po_number):
+        raise ValueError("PO number must use the format PO-YYYY-NNNN")
+    matches = tuple(link for link in links.values() if po_number in link.po_numbers)
+    if not matches:
+        raise ValueError(f"No invoice link is listed for purchase order {po_number}")
+    if any(link.link_status != "listed" for link in matches):
+        notes = [f"{link.case_id}: {link.link_note or 'link needs review'}" for link in matches if link.link_status != "listed"]
+        raise ValueError("PO link needs human review: " + "; ".join(notes))
+    return matches
+
+
+def _require_reviewed_link(link: DocumentLink) -> None:
+    if link.link_status != "listed":
+        raise ValueError(f"Document links for {link.case_id} need review: {link.link_note}")
+
+
+def _normalize_invoice_path(value: str) -> str:
+    normalized = value.strip().replace("\\", "/").casefold()
+    normalized = re.sub(r"^\./", "", normalized)
+    marker = "/data/raw/invoice-agent/"
+    if marker in normalized:
+        normalized = normalized.rsplit(marker, 1)[1]
+    elif normalized.startswith("data/raw/invoice-agent/"):
+        normalized = normalized[len("data/raw/invoice-agent/"):]
+    return normalized
+
+
+def _invoice_aliases(link: DocumentLink) -> set[str]:
+    """Return exact allow-list names, including the extensionless case ID."""
+    source = _normalize_invoice_path(link.invoice_source)
+    source_path = Path(source)
+    return {
+        source,
+        source_path.name,
+        source_path.stem,
+        link.case_id.casefold(),
+    }
+
+
 def fetch_case_evidence(
     case_id: str,
     links: dict[str, DocumentLink],
@@ -50,8 +112,7 @@ def fetch_case_evidence(
     link = links.get(case_id)
     if link is None:
         raise ValueError(f"No document link row exists for {case_id}")
-    if link.link_status != "listed":
-        raise ValueError(f"Document links for {case_id} need review: {link.link_note}")
+    _require_reviewed_link(link)
     source_ids = [case_id, *link.po_numbers, *link.receipt_ids]
     fetched = collection.get(
         where={"source_id": {"$in": source_ids}},
