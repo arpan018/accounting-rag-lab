@@ -1,18 +1,38 @@
 # Local three-way match example
 
-This local learning flow compares one invoice candidate with its purchase order (PO) and goods receipts (GRs). It uses exact `po_number` links to load source records and deterministic `Decimal` rules to identify differences. It does not send documents to a model or make a final accounting decision.
+Compare one invoice with its linked PO and goods receipts. The Python command follows exact `po_number` links and uses `Decimal` checks to report differences. It does not call an LLM or approve an invoice.
 
 Run from the project folder with the virtual environment:
 
 ```powershell
 .\.venv\Scripts\python.exe examples\three_way_match.py --invoice invoices\001_q01.pdf
+.\.venv\Scripts\python.exe examples\three_way_match.py --invoice 001_q01
+.\.venv\Scripts\python.exe examples\three_way_match.py --invoice 001_q01.pdf
 .\.venv\Scripts\python.exe examples\three_way_match.py --po PO-2026-0101
 ```
 
-An invoice path must appear in `eval/working_set.csv`. If a PO number has more than one invoice candidate, the PO run lists the candidates and asks for one invoice file to be selected in a separate run. If an invoice does not print its PO number, the loader can use a separately reviewed link and still reports `PO_NOT_PRINTED_ON_INVOICE`.
+The command accepts an allow-listed path, case ID, or exact filename, with or without `.pdf`. Each invoice must appear in `eval/working_set.csv`; invalid or ambiguous inputs return a readable error. If a PO has multiple invoice candidates, the CLI lists them and asks you to run the check again with one invoice selected. If an invoice does not print a PO number, the loader can use a separately reviewed link while leaving the printed PO field empty.
 
-The JSON output includes extracted candidate fields, the selected PO and GR record IDs, evidence citations, deterministic findings, a compact line-match count, calculation notes, extraction warnings, and whether human review is required. It does not print a full mapping row for every invoice item. Line-specific mismatch or unresolved details appear in `findings`; the match count shows how many invoice lines linked to PO lines. A unique one-to-one quantity/price mapping is not itself a discrepancy. Because distinct products can share a quantity and price, this matching rule should be evaluated before use outside the synthetic corpus. A scanned invoice such as `010_q10.pdf` remains unsupported without OCR.
+## Reading the JSON result
 
-`human_review_reasons` contains plain-language explanations for every run that sets `requires_human_review` to true. `first_pass_review` carries the existing reviewer annotation from the review queue. A missing discount is recorded under `calculation_notes` when zero is assumed for arithmetic; it is not an extraction warning.
+The result is a summary of candidate extraction and code checks, not an approval to pay. Its top-level fields are:
 
-The parser handles the current Quillfeather USD text layout. Other vendor layouts can return partial candidates or unresolved line links. Exact word/identifier extraction does not certify correctness; compare evidence and route missing, conflicting, uncertain, arithmetic, and receipt cases to a person. No tolerance, conversion, or rounding rule is added by this example.
+| Field | Meaning |
+|---|---|
+| `status`, `input` | Whether the check completed or stopped, and the invoice/PO input used. |
+| `invoice_case_id`, `invoice_candidates` | Resolved case and any invoice choices associated with the input. |
+| `invoice`, `purchase_order`, `receipts` | Candidate invoice fields and the linked PO/GR identities, summary values, and source locators. Missing candidate values can be `null`. |
+| `findings` | Coded discrepancies or unresolved conditions, each with a short message. |
+| `citations` | PDF page and JSON record locations used for the result. |
+| `extraction_warnings`, `calculation_notes` | Missing/partial text information and calculation assumptions, kept separate. |
+| `line_match_summary` | Counts for invoice lines, linked PO lines, and unresolved lines. The output does not print every internal line mapping. |
+| `first_pass_review` | Existing owner note from the review queue. Read this alongside `findings`; it is not a computed conclusion and can differ from current findings. |
+| `human_review_reasons`, `requires_human_review` | Why a person should inspect the case and the resulting review flag. |
+
+Monetary candidate values are kept as source strings (or `null`) in the JSON. The reconciler uses `Decimal` from those strings. It adds no unstated tolerance, currency conversion, or rounding rule. A duplicate printed invoice number among the allow-listed PDFs can produce `DUPLICATE_INVOICE_NUMBER` and require review.
+
+`findings` lists mismatches and unresolved links. `line_match_summary` shows how many invoice lines linked to PO lines, but it does not show each line mapping. A unique quantity-and-price match is treated as a link, not a discrepancy. Different products can share those values, so review this rule before using it beyond the synthetic data.
+
+When an invoice omits a discount, the calculation assumes zero and records that assumption in `calculation_notes`.
+
+The parser handles the current Quillfeather USD layout. Other vendor layouts may produce incomplete fields or unresolved lines. Review missing or uncertain values and any amount or receipt mismatch against the source documents.

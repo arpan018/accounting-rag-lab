@@ -1,51 +1,25 @@
-# Manifest and evidence-status design
+# Manifest and evidence status
 
-This document defines how the project tracks source documents and their links. The source corpus stays under ignored `data/raw/`; this design does not copy or modify it.
+This guide explains the status labels used for document links. The generated `data/raw/invoice-agent/manifest.json` lists synthetic cases; it is not the runtime link map.
 
-## Separate source evidence from expected answers
+## Source evidence and evaluation labels
 
-Invoices, purchase orders (POs), and goods receipts (GRs) are source evidence. Ground-truth labels are a separate evaluation reference: use them to check extraction, retrieval, and reconciliation outputs, never as RAG chunks or answer context. The raw package `manifest.json` is an inventory of generated cases, not the project's validated evidence manifest.
+Invoice PDFs, purchase order records, and goods-receipt records are source evidence. Ground-truth JSON is used only to compare evaluation results. It is not indexed in Chroma or used by answer generation or reconciliation.
 
 ## Evidence link states
 
-Each relationship is recorded independently (for example, invoice-to-PO and PO-to-GR):
+Each relationship, such as invoice-to-PO or PO-to-receipt, has its own status:
 
-| Status | Meaning | Example |
-|---|---|---|
-| `available` | A specific source record was located and linked. | Invoice prints `PO-2026-0114`; matching PO record is present. |
-| `missing` | The evidence was checked for and is not present in the supplied source set. | No receipt record for a PO after checking the receipt inventory. |
-| `ambiguous` | More than one plausible record exists; a human must resolve the link. | Two PO records could match an invoice. |
-| `conflicting` | Sources or identifiers disagree in a way that prevents a safe link or conclusion. | Invoice and linked PO show different currencies. |
-| `not_reviewed` | The relationship has not yet been checked. Do not interpret this as missing. | A case awaiting source inspection. |
+| Status | Meaning |
+|---|---|
+| `available` | The linked source record was found. Its values may still differ from the other records. |
+| `missing` | The supplied sources were checked, but the record was not found. |
+| `ambiguous` | More than one record could match, so a person must choose. |
+| `conflicting` | The sources or identifiers disagree, so the link or result needs review. |
+| `not_reviewed` | The relationship has not been checked. This does not mean evidence is missing. |
 
-`available` means the evidence record exists, not that its values agree. A price or quantity variance is recorded as a reconciliation finding while the evidence link can remain `available`. Keep invoice-stated identifiers distinct from inferred or proposed links, and retain the source and review provenance for either.
+## Status values used by the current code
 
-## Example record (illustrative, not an evaluation label)
+These design labels differ from the runtime values. In `data/document_links.csv`, `listed` allows the linked-answer command to use a row, while `needs_review` blocks it until a person confirms the link. The deterministic loader uses `linked`, `missing`, `unreviewed`, `ambiguous`, `conflicting`, or `record_missing` for invoice-to-PO resolution. It reports receipt status as `available`, `missing`, `not_required`, or `unknown`.
 
-```yaml
-case_id: 005_q05
-source_documents:
-  - document_id: invoice-005_q05
-    type: invoice
-    path: data/raw/invoice-agent/invoices/005_q05.pdf
-    provenance: synthetic invoice-agent corpus
-links:
-  invoice_to_po:
-    status: available
-    source: expected PO candidate in the supplied case reference; invoice itself has no PO number
-    target_document_id: po-PO-2026-0105
-    link_method: candidate_link_requires_review
-  po_to_gr:
-    status: available
-    target_document_id: gr-GR-00006
-review:
-  status: not_reviewed
-  reviewer: null
-  note: Owner review is required before this case is treated as verified ground truth.
-```
-
-The example makes clear that the invoice does not state a PO number and that the candidate link is not a value extracted from the invoice. It is intentionally not owner-certified. Do not mark it reviewed based on this example.
-
-## Provenance and evaluation separation
-
-Every source record needs a stable ID, document type, relative path, corpus/source attribution, and page provenance when extracted. Expected values belong in a separate evaluation file keyed by case and field, with reviewer/status/source references. Preserve original strings; monetary normalization and comparison use `Decimal` created from strings with currency and rounding behavior explicit. Never include ground-truth files in ingestion or chunking inputs.
+An available link means the record was found; it does not mean the invoice, PO, and receipt agree. The reconciliation output reports value differences separately.
